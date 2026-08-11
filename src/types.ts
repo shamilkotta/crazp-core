@@ -1,8 +1,5 @@
 import type { SkillManifest, SkillManifestEntry } from "agents/skills";
-import type {
-  CrazpAgentConfig,
-  CrazpSubagentConfig
-} from "crazp";
+import type { CrazpAgentConfig, CrazpSubagentConfig } from "crazp";
 
 export type CrazpDiscoveredTool = {
   name: string;

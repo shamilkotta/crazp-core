@@ -34,7 +34,10 @@ export async function discoverAgentFromFiles(
   const fileMap = buildSourceFileMap(files);
   const agentPrefix = `${normalizePath(agentDirName)}/`;
 
-  const instructions = readIndexedText(fileMap, `${agentPrefix}instructions.md`);
+  const instructions = readIndexedText(
+    fileMap,
+    `${agentPrefix}instructions.md`
+  );
   const agentConfigPath = `${agentPrefix}agent.ts`;
   const config = await loadRequiredIndexedConfig<CrazpAgentConfig>(
     fileMap,

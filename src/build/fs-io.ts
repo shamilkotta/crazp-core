@@ -8,10 +8,7 @@ import {
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import type {
-  BuildFilesystemAgentOutput,
-  BuildOutputFile
-} from "./build-agent";
+import type { BuildOutputFile, BuildAgentOutput } from "./build-agent";
 
 const IGNORED_DIRS = new Set([
   ".git",
@@ -73,7 +70,7 @@ async function walkDirectory(
 
 export async function writeBuildOutput(
   outDir: string,
-  output: BuildFilesystemAgentOutput
+  output: BuildAgentOutput
 ): Promise<{ workerPath: string; wranglerPath: string }> {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });

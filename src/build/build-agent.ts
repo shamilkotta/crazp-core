@@ -54,12 +54,3 @@ export async function buildAgent(
     wranglerConfig
   };
 }
-
-/** @deprecated Use `BuildAgentInput` */
-export type BuildFilesystemAgentInput = BuildAgentInput;
-
-/** @deprecated Use `BuildAgentOutput` */
-export type BuildFilesystemAgentOutput = BuildAgentOutput;
-
-/** Platform-facing alias for the in-memory baseline build API. */
-export const buildFilesystemAgent = buildAgent;

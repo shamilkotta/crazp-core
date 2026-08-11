@@ -32,14 +32,9 @@ async function withSpinner<T>(text: string, fn: () => Promise<T>): Promise<T> {
 
 export {
   buildAgent,
-  buildFilesystemAgent,
   type BuildAgentInput,
   type BuildAgentOutput,
   type BuildOutputFile
-} from "./build-agent";
-export type {
-  BuildAgentInput as BuildFilesystemAgentInput,
-  BuildAgentOutput as BuildFilesystemAgentOutput
 } from "./build-agent";
 
 export async function buildCrazpProject(
@@ -70,7 +65,3 @@ export async function buildCrazpProject(
     wranglerPath: paths.wranglerPath
   };
 }
-
-export { collectProjectSourceFiles, writeBuildOutput } from "./fs-io";
-export { discoverAgentFromFiles } from "./discovery";
-export type { SourceFile } from "./discovery";

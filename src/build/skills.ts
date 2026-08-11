@@ -108,12 +108,10 @@ export function buildSkillsBundleFromFiles(
   const skills: SkillManifestEntry[] = [];
   const seen = new Set<string>();
 
-  for (const skillDirName of [...skillNames].sort((a, b) => a.localeCompare(b, "en"))) {
-    const skill = readSkillFromFiles(
-      files,
-      `${prefix}${skillDirName}`,
-      warn
-    );
+  for (const skillDirName of [...skillNames].sort((a, b) =>
+    a.localeCompare(b, "en")
+  )) {
+    const skill = readSkillFromFiles(files, `${prefix}${skillDirName}`, warn);
     if (!skill) continue;
     if (seen.has(skill.name)) {
       warn(
@@ -170,25 +168,27 @@ function readSkillFromFiles(
   const description = stringField(data.description);
   if (!name || !description) return null;
 
-  const resources = collectFilesFromMap(files, skillPrefix, warn).map((file) => {
-    const encoding = resourceEncoding(file.path);
-    const kind = resourceKind(file.path);
-    const content = file.content;
-    const size = Buffer.byteLength(
-      content,
-      encoding === "base64" ? "base64" : "utf8"
-    );
+  const resources = collectFilesFromMap(files, skillPrefix, warn).map(
+    (file) => {
+      const encoding = resourceEncoding(file.path);
+      const kind = resourceKind(file.path);
+      const content = file.content;
+      const size = Buffer.byteLength(
+        content,
+        encoding === "base64" ? "base64" : "utf8"
+      );
 
-    return {
-      path: file.path,
-      kind,
-      size,
-      encoding,
-      mimeType: resourceMimeType(file.path),
-      content,
-      precompiled: false
-    };
-  });
+      return {
+        path: file.path,
+        kind,
+        size,
+        encoding,
+        mimeType: resourceMimeType(file.path),
+        content,
+        precompiled: false
+      };
+    }
+  );
 
   return {
     name,
@@ -212,7 +212,8 @@ function collectFilesFromMap(
   const collected: Array<{ path: string; content: string }> = [];
 
   for (const [path, content] of files.entries()) {
-    if (!path.startsWith(prefix) || path === `${skillPrefix}/SKILL.md`) continue;
+    if (!path.startsWith(prefix) || path === `${skillPrefix}/SKILL.md`)
+      continue;
 
     const relativePath = path.slice(prefix.length);
     const resourceRoot = relativePath.split("/")[0];
