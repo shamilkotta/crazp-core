@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createWorker } from "@cloudflare/worker-bundler";
 import { rolldown, type Plugin, type RolldownOutput } from "rolldown";
 
 import { toVirtualId, type VirtualBuildContext } from "./virtual-modules";
@@ -65,7 +66,7 @@ function createBundleOptions(
   };
 }
 
-export async function bundleWorkerToMemory(
+export async function bundleWorker(
   virtualContext: VirtualBuildContext,
   sourceFiles?: Map<string, string>
 ): Promise<BundleMemoryResult> {
@@ -80,6 +81,90 @@ export async function bundleWorkerToMemory(
   });
 
   return formatBundleOutput(output);
+}
+
+export async function bundleWorkerWithWorkerBundler(
+  virtualContext: VirtualBuildContext,
+  sourceFiles?: Map<string, string>
+): Promise<BundleMemoryResult> {
+  const files = Object.fromEntries(sourceFiles ?? []);
+  files["src/index.ts"] = `import thinkEntry from "virtual:think/entry";
+import { handleFrameworkRequest } from "@crazp/core/worker";
+
+export * from "virtual:think/agents";
+export { CodemodeRuntime } from "@cloudflare/think/server-entry";
+export { Sandbox } from "@cloudflare/sandbox";
+
+export default {
+  async fetch(request: Request, env: unknown, ctx: ExecutionContext): Promise<Response> {
+    const frameworkResponse = await handleFrameworkRequest(request);
+    if (frameworkResponse) return frameworkResponse;
+    return thinkEntry.fetch(request, env, ctx);
+  }
+};
+`;
+  files["package.json"] ??= JSON.stringify({
+    type: "module",
+    dependencies: {
+      "@cloudflare/sandbox": "latest",
+      "@cloudflare/shell": "latest",
+      "@cloudflare/think": "latest",
+      agents: "latest",
+      ai: "^7.0.0",
+      crazp: "latest",
+      zod: "^4.4.3"
+    }
+  });
+
+  const virtualModules = toWorkerBundlerVirtualModules(virtualContext);
+  const { mainModule, modules } = await createWorker({
+    files,
+    entryPoint: "src/index.ts",
+    bundle: true,
+    conditions: ["workerd", "worker", "browser", "import", "default"],
+    externals: ["cloudflare:workers", "cloudflare:email"],
+    virtualModules
+  });
+  const main = modules[mainModule];
+  if (typeof main !== "string") {
+    throw new Error(
+      `Worker bundler main module "${mainModule}" was not JavaScript text.`
+    );
+  }
+
+  const extraFiles: BundleMemoryResult["files"] = [];
+  for (const [path, module] of Object.entries(modules)) {
+    if (path === mainModule) continue;
+    if (typeof module === "string") {
+      extraFiles.push({
+        path,
+        content: module,
+        contentType: guessContentType(path)
+      });
+      continue;
+    }
+    if ("js" in module && typeof module.js === "string") {
+      extraFiles.push({
+        path,
+        content: module.js,
+        contentType: "application/javascript"
+      });
+      continue;
+    }
+    if ("text" in module && typeof module.text === "string") {
+      extraFiles.push({
+        path,
+        content: module.text,
+        contentType: guessContentType(path)
+      });
+      continue;
+    }
+    throw new Error(
+      `Worker bundler emitted unsupported non-text module "${path}". Deploy support needs module upload wiring.`
+    );
+  }
+
+  return { workerScript: main, files: extraFiles };
 }
 
 function formatBundleOutput(output: RolldownOutput): BundleMemoryResult {
@@ -116,6 +201,36 @@ function guessContentType(path: string): string | undefined {
   if (path.endsWith(".json")) return "application/json";
   if (path.endsWith(".js")) return "application/javascript";
   return undefined;
+}
+
+function toWorkerBundlerVirtualModules(
+  context: VirtualBuildContext
+): Record<string, string> {
+  const modules: Record<string, string> = {
+    "@crazp/core/worker": `export { createCrazpAgentClass, createCrazpWorkerClass } from "crazp/worker";
+
+export async function handleFrameworkRequest(request) {
+  const url = new URL(request.url);
+  if (url.pathname === "/health" && request.method === "GET") {
+    return new Response("ok", {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" }
+    });
+  }
+  return null;
+}
+`
+  };
+
+  for (const [id, source] of context.modules) {
+    const specifier = id.startsWith("\0") ? id.slice(1) : id;
+    modules[specifier] = source;
+    if (specifier.startsWith("virtual:")) {
+      modules[`${specifier}.js`] = source;
+    }
+  }
+
+  return modules;
 }
 
 export async function evaluateConfigModule(

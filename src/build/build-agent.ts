@@ -1,4 +1,8 @@
-import { buildSourceFileMap, bundleWorkerToMemory } from "./bundle";
+import {
+  buildSourceFileMap,
+  bundleWorker,
+  bundleWorkerWithWorkerBundler
+} from "./bundle";
 import { discoverAgentFromFiles, type SourceFile } from "./discovery";
 import { buildVirtualModules } from "./virtual-modules";
 import { createWranglerConfig } from "./wrangler";
@@ -21,14 +25,18 @@ export type BuildAgentOutput = {
 };
 
 export async function buildAgent(
-  input: BuildAgentInput
+  input: BuildAgentInput,
+  bundler: "rolldown" | "worker-bundler" = "rolldown"
 ): Promise<BuildAgentOutput> {
   const sourceFiles = buildSourceFileMap(input.files);
   const manifest = await discoverAgentFromFiles(input.files, {
     agentDir: input.agentDir
   });
   const virtualContext = buildVirtualModules(manifest);
-  const bundle = await bundleWorkerToMemory(virtualContext, sourceFiles);
+  const bundle =
+    bundler === "worker-bundler"
+      ? await bundleWorkerWithWorkerBundler(virtualContext, sourceFiles)
+      : await bundleWorker(virtualContext, sourceFiles);
   const wranglerConfig = createWranglerConfig({
     agentName: manifest.name,
     thinkManifest: virtualContext.thinkManifest
