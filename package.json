@@ -1,9 +1,28 @@
 {
   "name": "@crazp/core",
   "description": "Crazp framework implementation and build pipeline",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.0.1",
+  "license": "MIT",
   "type": "module",
+  "homepage": "https://github.com/shamilkotta/crazp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shamilkotta/crazp.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/shamilkotta/crazp/issues"
+  },
+  "keywords": [
+    "crazp",
+    "agents",
+    "ai",
+    "build-pipeline",
+    "framework"
+  ],
+  "publishConfig": {
+    "access": "restricted"
+  },
   "bin": {
     "crazp": "./dist/cli/index.js"
   },
@@ -14,11 +33,14 @@
     }
   },
   "files": [
+    "README.md",
+    "LICENSE",
     "dist"
   ],
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch --clear",
+    "prepublishOnly": "pnpm run build",
     "typecheck": "tsc --noEmit",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
