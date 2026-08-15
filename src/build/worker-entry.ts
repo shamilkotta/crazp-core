@@ -1,5 +1,5 @@
 import thinkEntry from "virtual:think/entry";
-import { handleFrameworkRequest } from "@crazp/core/worker";
+import { handleFrameworkRequest } from "../worker";
 
 export * from "virtual:think/agents";
 export { CodemodeRuntime } from "@cloudflare/think/server-entry";

@@ -1,6 +1,3 @@
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { createThinkWorkerConfig } from "@cloudflare/think/framework";
 
 import { toThinkClassName } from "./names";
@@ -40,13 +37,19 @@ export function createWranglerConfig(args: {
     main: args.outfile ?? "index.js"
   });
 
+  const { assets: _assets, ...thinkWorkerConfig } = thinkConfig;
+
   const mainClassName = toThinkClassName(args.agentName);
   return {
     ...DEFAULT_BINDINGS,
-    ...thinkConfig,
+    ...thinkWorkerConfig,
     name: workerName,
     main: args.outfile ?? "index.js",
     no_bundle: true,
+    rules: [
+      { type: "ESModule", globs: ["**/*.js", "**/*.mjs"] },
+      { type: "CompiledWasm", globs: ["**/*.wasm"] }
+    ],
     durable_objects: {
       bindings: [
         {
@@ -66,22 +69,4 @@ export function createWranglerConfig(args: {
       }
     ]
   };
-}
-
-export async function writeWranglerConfig(args: {
-  projectRoot: string;
-  outDir: string;
-  agentName: string;
-  thinkManifest: Parameters<typeof createThinkWorkerConfig>[0];
-  outfile?: string;
-}): Promise<string> {
-  const config = createWranglerConfig({
-    agentName: args.agentName,
-    thinkManifest: args.thinkManifest,
-    outfile: args.outfile
-  });
-
-  const outputPath = join(args.outDir, "wrangler.json");
-  await writeFile(outputPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-  return outputPath;
 }

@@ -54,8 +54,8 @@
     "agents": "latest",
     "ai": "^7.0.0",
     "crazp": "workspace:*",
+    "esbuild": "^0.28.1",
     "ora": "^9.4.1",
-    "rolldown": "^1.2.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },

@@ -3,6 +3,7 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   entry: [
     "src/build/index.ts",
+    "src/build/worker-entry.ts",
     "src/cli/index.ts",
     "src/ctx.ts",
     "src/worker/index.ts"
@@ -16,11 +17,13 @@ export default defineConfig({
   platform: "node",
   deps: {
     neverBundle: [
-      "rolldown",
+      "esbuild",
       "@cloudflare/think",
       "agents",
       "ai",
       "crazp",
+      "virtual:think/agents",
+      "virtual:think/entry",
       "virtual:crazp/tools/agent",
       "virtual:crazp/tools/subagents"
     ]

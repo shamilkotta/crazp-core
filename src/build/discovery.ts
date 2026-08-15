@@ -1,12 +1,9 @@
-import { basename, extname } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { basename, extname, join } from "node:path";
 
 import { DEFAULT_EXECUTION, DEFAULT_MODEL } from "../defaults";
-import {
-  buildSourceFileMap,
-  evaluateConfigModule,
-  normalizePath
-} from "./bundle";
-import { buildSkillsBundleFromFiles, mergeSkillsBundles } from "./skills";
+import { evaluateConfigModuleFromFileSystem, normalizePath } from "./bundle";
+import { buildSkillsBundle, mergeSkillsBundles } from "./skills";
 import type { CrazpAgentConfig, CrazpSubagentConfig } from "crazp";
 import type {
   CrazpAgentManifest,
@@ -14,46 +11,41 @@ import type {
   CrazpResolvedSubagentConfig
 } from "../types";
 
-export type SourceFile = {
-  path: string;
-  content: string;
-};
-
 const TOOL_NAME_RE = /^[a-z][a-z0-9_]*$/;
 
-export type DiscoverAgentFromFilesOptions = {
+export type DiscoverAgentFromProjectOptions = {
+  projectRoot: string;
   agentDir?: string;
 };
 
-export async function discoverAgentFromFiles(
-  files: SourceFile[],
-  options: DiscoverAgentFromFilesOptions = {}
+export async function discoverAgentFromProject(
+  options: DiscoverAgentFromProjectOptions
 ): Promise<CrazpAgentManifest> {
   const agentDirName = options.agentDir ?? "agent";
-  const rootDir = ".";
-  const fileMap = buildSourceFileMap(files);
-  const agentPrefix = `${normalizePath(agentDirName)}/`;
+  const rootDir = options.projectRoot;
+  const agentPrefix = normalizePath(agentDirName);
+  const agentRoot = join(rootDir, agentPrefix);
 
-  const instructions = readIndexedText(
-    fileMap,
-    `${agentPrefix}instructions.md`
+  const instructions = await readProjectText(
+    rootDir,
+    `${agentPrefix}/instructions.md`
   );
-  const agentConfigPath = `${agentPrefix}agent.ts`;
-  const config = await loadRequiredIndexedConfig<CrazpAgentConfig>(
-    fileMap,
+  const agentConfigPath = `${agentPrefix}/agent.ts`;
+  const config = await loadRequiredProjectConfig<CrazpAgentConfig>(
+    rootDir,
     agentConfigPath
   );
   const tools = mergeDiscoveredTools(
-    discoverIndexedToolFiles(fileMap, `${agentPrefix}tools`),
+    await discoverProjectToolFiles(rootDir, `${agentPrefix}/tools`),
     discoverInlineTools(config.tools, agentConfigPath)
   );
   const skills = mergeSkillsBundles(
-    buildSkillsBundleFromFiles(fileMap, `${agentPrefix}skills`, agentDirName),
+    await buildSkillsBundle(join(agentRoot, "skills")),
     config?.skills ?? []
   );
-  const subagents = await loadIndexedSubagents(
-    fileMap,
-    `${agentPrefix}subagents`
+  const subagents = await loadProjectSubagents(
+    rootDir,
+    `${agentPrefix}/subagents`
   );
 
   return {
@@ -75,90 +67,104 @@ export async function discoverAgentFromFiles(
   };
 }
 
-function readIndexedText(
-  fileMap: Map<string, string>,
+async function readProjectText(
+  projectRoot: string,
   path: string
-): string | null {
-  return fileMap.get(normalizePath(path)) ?? null;
+): Promise<string | null> {
+  return readFile(join(projectRoot, normalizePath(path)), "utf8").catch(
+    (error) => {
+      if (isMissingPathError(error)) return null;
+      throw error;
+    }
+  );
 }
 
-async function loadRequiredIndexedConfig<T>(
-  fileMap: Map<string, string>,
+async function loadRequiredProjectConfig<T>(
+  projectRoot: string,
   path: string
 ): Promise<T> {
-  const config = await loadOptionalIndexedConfig<T>(fileMap, path);
+  const config = await loadOptionalProjectConfig<T>(projectRoot, path);
   if (!config) {
     throw new Error(`Required config file "${path}" is missing`);
   }
   return config;
 }
 
-async function loadOptionalIndexedConfig<T>(
-  fileMap: Map<string, string>,
+async function loadOptionalProjectConfig<T>(
+  projectRoot: string,
   path: string
 ): Promise<T | null> {
   const normalized = normalizePath(path);
-  if (!fileMap.has(normalized)) return null;
-  return (await evaluateConfigModule(normalized, fileMap)) as T | null;
+  if (!(await exists(join(projectRoot, normalized)))) return null;
+  return (await evaluateConfigModuleFromFileSystem(
+    normalized,
+    projectRoot
+  )) as T | null;
 }
 
-function discoverIndexedToolFiles(
-  fileMap: Map<string, string>,
+async function discoverProjectToolFiles(
+  projectRoot: string,
   dir: string
-): CrazpDiscoveredTool[] {
-  const prefix = `${normalizePath(dir)}/`;
+): Promise<CrazpDiscoveredTool[]> {
+  const normalizedDir = normalizePath(dir);
+  const entries = await readdir(join(projectRoot, normalizedDir), {
+    withFileTypes: true
+  }).catch((error) => {
+    if (isMissingPathError(error)) return [];
+    throw error;
+  });
   const tools: CrazpDiscoveredTool[] = [];
   const seen = new Set<string>();
 
-  for (const path of fileMap.keys()) {
-    if (!path.startsWith(prefix) || extname(path) !== ".ts") continue;
-    const relative = path.slice(prefix.length);
-    if (relative.includes("/")) continue;
+  for (const entry of entries) {
+    if (!entry.isFile() || extname(entry.name) !== ".ts") continue;
 
-    const name = basename(path, ".ts");
+    const name = basename(entry.name, ".ts");
     if (!TOOL_NAME_RE.test(name)) {
       throw new Error(
-        `Invalid tool filename "${relative}". Use lower_snake_case TypeScript files.`
+        `Invalid tool filename "${entry.name}". Use lower_snake_case TypeScript files.`
       );
     }
     if (seen.has(name)) {
       throw new Error(`Duplicate tool name discovered: ${name}`);
     }
     seen.add(name);
-    tools.push({ name, path });
+    tools.push({ name, path: `${normalizedDir}/${entry.name}` });
   }
 
   return tools;
 }
 
-async function loadIndexedSubagents(
-  fileMap: Map<string, string>,
+// TODO: SKILLS?
+async function loadProjectSubagents(
+  projectRoot: string,
   dir: string
 ): Promise<Record<string, CrazpResolvedSubagentConfig>> {
-  const prefix = `${normalizePath(dir)}/`;
-  const subagentKeys = new Set<string>();
-
-  for (const path of fileMap.keys()) {
-    if (!path.startsWith(prefix)) continue;
-    const relative = path.slice(prefix.length);
-    const key = relative.split("/")[0];
-    if (key) subagentKeys.add(key);
-  }
-
+  const prefix = normalizePath(dir);
+  const entries = await readdir(join(projectRoot, prefix), {
+    withFileTypes: true
+  }).catch((error) => {
+    if (isMissingPathError(error)) return [];
+    throw error;
+  });
   const subagents: Record<string, CrazpResolvedSubagentConfig> = {};
-  for (const key of subagentKeys) {
-    const subagentDir = `${normalizePath(dir)}/${key}`;
-    const instructions = readIndexedText(
-      fileMap,
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const key = entry.name;
+    const subagentDir = `${prefix}/${key}`;
+    const instructions = await readProjectText(
+      projectRoot,
       `${subagentDir}/instructions.md`
     );
     const subagentConfigPath = `${subagentDir}/agent.ts`;
-    const config = await loadRequiredIndexedConfig<CrazpSubagentConfig>(
-      fileMap,
+    const config = await loadRequiredProjectConfig<CrazpSubagentConfig>(
+      projectRoot,
       subagentConfigPath
     );
     const tools = mergeDiscoveredTools(
-      discoverIndexedToolFiles(fileMap, `${subagentDir}/tools`),
+      await discoverProjectToolFiles(projectRoot, `${subagentDir}/tools`),
       discoverInlineTools(config.tools, subagentConfigPath)
     );
 
@@ -238,4 +244,21 @@ function mergeDiscoveredTools(
   }
 
   return merged;
+}
+
+const exists = (path: string) =>
+  stat(path)
+    .then(() => true)
+    .catch((error) => {
+      if (isMissingPathError(error)) return false;
+      throw error;
+    });
+
+function isMissingPathError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error != null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
