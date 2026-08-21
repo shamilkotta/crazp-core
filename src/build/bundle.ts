@@ -158,11 +158,7 @@ function crazpAliasEsbuildPlugin(): EsbuildPlugin {
   const aliases = new Map([
     ["@crazp/core/worker", resolveWorkerRuntimePath()],
     ["crazp:ctx", resolveCtxModulePath()],
-    ["crazp", resolveCrazpPackagePath()],
-    [
-      "@cloudflare/think/server-entry",
-      fileURLToPath(import.meta.resolve("@cloudflare/think/server-entry"))
-    ]
+    ["crazp", resolveCrazpPackagePath()]
   ]);
 
   return {

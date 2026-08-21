@@ -1,5 +1,3 @@
-import { createThinkWorkerConfig } from "@cloudflare/think/framework";
-
 import { toThinkClassName } from "./names";
 
 export type WranglerConfig = Record<string, unknown>;
@@ -28,21 +26,31 @@ const DEFAULT_BINDINGS: WranglerConfig = {
 
 export function createWranglerConfig(args: {
   agentName: string;
-  thinkManifest: Parameters<typeof createThinkWorkerConfig>[0];
   outfile?: string;
 }): WranglerConfig {
   const workerName = args.agentName;
-  const thinkConfig = createThinkWorkerConfig(args.thinkManifest, {
-    name: workerName,
-    main: args.outfile ?? "index.js"
+  const mainClassName = toThinkClassName(args.agentName);
+  const durableObjectBindings = [
+    {
+      class_name: mainClassName,
+      name: mainClassName
+    }
+  ];
+
+  if (args.agentName !== mainClassName && args.agentName !== "SANDBOX") {
+    durableObjectBindings.push({
+      class_name: mainClassName,
+      name: args.agentName
+    });
+  }
+
+  durableObjectBindings.push({
+    class_name: "Sandbox",
+    name: "SANDBOX"
   });
 
-  const { assets: _assets, ...thinkWorkerConfig } = thinkConfig;
-
-  const mainClassName = toThinkClassName(args.agentName);
   return {
     ...DEFAULT_BINDINGS,
-    ...thinkWorkerConfig,
     name: workerName,
     main: args.outfile ?? "index.js",
     no_bundle: true,
@@ -51,16 +59,7 @@ export function createWranglerConfig(args: {
       { type: "CompiledWasm", globs: ["**/*.wasm"] }
     ],
     durable_objects: {
-      bindings: [
-        {
-          class_name: mainClassName,
-          name: mainClassName
-        },
-        {
-          class_name: "Sandbox",
-          name: "SANDBOX"
-        }
-      ]
+      bindings: durableObjectBindings
     },
     migrations: [
       {

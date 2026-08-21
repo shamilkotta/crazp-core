@@ -1,16 +1,4 @@
-declare module "virtual:think/entry" {
-  const entry: {
-    fetch(
-      request: Request,
-      env: unknown,
-      ctx: ExecutionContext
-    ): Response | Promise<Response>;
-  };
-
-  export default entry;
-}
-
-declare module "virtual:think/agents" {
+declare module "virtual:crazp/agent-classes" {
   export {};
 }
 

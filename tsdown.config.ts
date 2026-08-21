@@ -19,11 +19,11 @@ export default defineConfig({
     neverBundle: [
       "esbuild",
       "@cloudflare/think",
+      "@cloudflare/codemode",
       "agents",
       "ai",
       "crazp",
-      "virtual:think/agents",
-      "virtual:think/entry",
+      "virtual:crazp/agent-classes",
       "virtual:crazp/tools/agent",
       "virtual:crazp/tools/subagents"
     ]

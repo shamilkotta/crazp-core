@@ -1,7 +1,7 @@
 {
   "name": "@crazp/core",
   "description": "Crazp framework implementation and build pipeline",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "license": "MIT",
   "type": "module",
   "homepage": "https://github.com/shamilkotta/crazp#readme",
@@ -47,11 +47,12 @@
     "lint": "oxlint ."
   },
   "dependencies": {
+    "@cloudflare/codemode": "^0.5.1",
     "@cloudflare/sandbox": "^0.12.4",
-    "@cloudflare/shell": "latest",
-    "@cloudflare/think": "latest",
+    "@cloudflare/shell": "^0.4.3",
+    "@cloudflare/think": "^0.16.0",
     "@cloudflare/worker-bundler": "^0.2.2",
-    "agents": "latest",
+    "agents": "^0.21.0",
     "ai": "^7.0.0",
     "crazp": "workspace:*",
     "esbuild": "^0.28.1",

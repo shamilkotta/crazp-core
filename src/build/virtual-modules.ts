@@ -1,11 +1,3 @@
-import {
-  discoverThinkApp,
-  generateThinkAgentsModule,
-  generateThinkEntry,
-  generateThinkManifestModule,
-  generateThinkRouterModule
-} from "@cloudflare/think/framework";
-
 import type { CrazpAgentManifest, CrazpDiscoveredTool } from "../types";
 import type { SerializedCrazpManifest } from "../agent/types";
 import {
@@ -16,7 +8,6 @@ import {
 
 export type VirtualBuildContext = {
   modules: Map<string, string>;
-  thinkManifest: ReturnType<typeof discoverThinkApp>;
 };
 
 const VIRTUAL_PREFIX = "\0";
@@ -31,6 +22,7 @@ export function buildVirtualModules(
   const serialized = serializeManifest(manifest);
   const agentId = manifest.name;
   const agentFiles: Record<string, string> = {};
+  const classExports: { className: string; virtualId: string }[] = [];
 
   const workerImports: string[] = [];
   const workerBindings: string[] = [];
@@ -39,24 +31,28 @@ export function buildVirtualModules(
     const className = toThinkSubagentClassName(agentId, subagentKey);
     const importName = `${toPascalCase(subagentKey)}Worker`;
     const sourcePath = `agents/${agentId}/agents/${subagentKey}/agent.ts`;
+    const virtualId = `virtual:crazp/${sourcePath.replace(/\.ts$/, "")}`;
     workerImports.push(
-      `import { ${className} as ${importName} } from "virtual:crazp/agents/${agentId}/agents/${subagentKey}/agent";`
+      `import { ${className} as ${importName} } from ${JSON.stringify(virtualId)};`
     );
     workerBindings.push(`  ${JSON.stringify(subagentKey)}: ${importName}`);
     agentFiles[sourcePath] = renderSubagentAgentFile({
       className,
       subagentKey
     });
+    classExports.push({ className, virtualId });
   }
 
   const mainClassName = toThinkClassName(agentId);
-  agentFiles[`agents/${agentId}/agent.ts`] = renderMainAgentFile({
+  const mainSourcePath = `agents/${agentId}/agent.ts`;
+  const mainVirtualId = `virtual:crazp/${mainSourcePath.replace(/\.ts$/, "")}`;
+  agentFiles[mainSourcePath] = renderMainAgentFile({
     className: mainClassName,
     workerImports,
     workerBindings
   });
+  classExports.unshift({ className: mainClassName, virtualId: mainVirtualId });
 
-  const thinkManifest = discoverThinkApp({ root: ".", files: agentFiles });
   const modules = new Map<string, string>();
 
   modules.set(
@@ -79,23 +75,11 @@ export function buildVirtualModules(
   }
 
   modules.set(
-    toVirtualId("virtual:think/agents"),
-    fixThinkAgentImports(generateThinkAgentsModule(thinkManifest))
-  );
-  modules.set(
-    toVirtualId("virtual:think/manifest"),
-    generateThinkManifestModule(thinkManifest)
-  );
-  modules.set(
-    toVirtualId("virtual:think/router"),
-    generateThinkRouterModule(thinkManifest)
-  );
-  modules.set(
-    toVirtualId("virtual:think/entry"),
-    generateThinkEntry(thinkManifest)
+    toVirtualId("virtual:crazp/agent-classes"),
+    renderAgentClassesModule(classExports)
   );
 
-  return { modules, thinkManifest };
+  return { modules };
 }
 
 function serializeManifest(
@@ -266,10 +250,13 @@ export default ${args.className};
 `;
 }
 
-function fixThinkAgentImports(source: string): string {
-  return source.replace(
-    /from "(\/agents\/[^"]+\.ts)"/g,
-    (_match, importPath: string) =>
-      `from "virtual:crazp${importPath.slice(0, -3)}"`
-  );
+function renderAgentClassesModule(
+  classExports: { className: string; virtualId: string }[]
+): string {
+  return classExports
+    .map(
+      ({ className, virtualId }) =>
+        `export { ${className} } from ${JSON.stringify(virtualId)};`
+    )
+    .join("\n");
 }

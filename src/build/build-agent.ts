@@ -61,8 +61,7 @@ export async function buildAgent(
   });
 
   const wranglerConfig = createWranglerConfig({
-    agentName: manifest.name,
-    thinkManifest: virtualContext.thinkManifest
+    agentName: manifest.name
   });
   const workerPath = join(outDir, "index.js");
   const wranglerPath = join(outDir, "wrangler.json");
