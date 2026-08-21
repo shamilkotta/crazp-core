@@ -6,6 +6,7 @@ import {
   isCompilableSkillScript
 } from "agents/skills/compile";
 import { parse } from "yaml";
+import { z } from "zod";
 import type { SkillManifest, SkillManifestEntry } from "agents/skills";
 
 const SKILL_RESOURCE_ROOTS = new Set([
@@ -83,6 +84,25 @@ const MIME_TYPES = new Map([
   [".yaml", "application/yaml"],
   [".yml", "application/yaml"]
 ]);
+
+const skillNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    "must be lowercase letters, numbers, and hyphens; must not start or end with a hyphen or contain consecutive hyphens"
+  );
+
+const skillFrontmatterSchema = z.object({
+  name: skillNameSchema,
+  description: z.string().trim().min(1).max(1024),
+  license: z.string().min(1).optional(),
+  compatibility: z.string().min(1).max(500).optional(),
+  metadata: z.record(z.string(), z.string()).optional(),
+  "allowed-tools": z.string().min(1).optional()
+});
 
 export type BuildSkillsBundleOptions = {
   warn?: (message: string) => void;
@@ -180,9 +200,28 @@ async function readSkill(
   if (rawContent === null) return null;
 
   const { data, body } = parseFrontmatter(rawContent);
-  const name = stringField(data.name);
-  const description = stringField(data.description);
-  if (!name || !description) return null;
+  const directoryName = basename(skillDir);
+  const parsed = skillFrontmatterSchema
+    .refine((frontmatter) => frontmatter.name === directoryName, {
+      path: ["name"],
+      error: `must match the parent directory name "${directoryName}"`
+    })
+    .safeParse(data);
+  if (!parsed.success) {
+    warn(
+      `Skipping skill "${directoryName}": invalid SKILL.md (${formatSkillFrontmatterError(parsed.error)}). See https://agentskills.io/specification`
+    );
+    return null;
+  }
+
+  const {
+    name,
+    description,
+    license,
+    compatibility,
+    metadata,
+    "allowed-tools": allowedTools
+  } = parsed.data;
 
   const resources = await Promise.all(
     (await collectFiles(skillDir, "", warn)).map(async (file) => {
@@ -229,10 +268,10 @@ async function readSkill(
     description,
     body,
     rawContent,
-    compatibility: stringField(data.compatibility),
-    license: stringField(data.license),
-    allowedTools: stringField(data["allowed-tools"]),
-    metadata: recordField(data.metadata),
+    compatibility,
+    license,
+    allowedTools,
+    metadata,
     resources
   };
 }
@@ -259,9 +298,9 @@ async function collectFiles(
       if (!resourceRoot || SKILL_IGNORED_ROOTS.has(resourceRoot)) continue;
       if (!SKILL_RESOURCE_ROOTS.has(resourceRoot)) {
         if (!relativeRoot) {
-          warn(
-            `Ignoring skill directory "${relativePath}". Bundled skill resources should live under references/, scripts/, assets/, or a known asset root.`
-          );
+          // warn(
+          //   `Ignoring skill directory "${relativePath}". Bundled skill resources should live under references/, scripts/, assets/, or a known asset root.`
+          // );
         }
         continue;
       }
@@ -275,9 +314,9 @@ async function collectFiles(
       const resourceRoot = relativePath.split("/")[0];
       if (!resourceRoot || SKILL_IGNORED_ROOTS.has(resourceRoot)) continue;
       if (!SKILL_RESOURCE_ROOTS.has(resourceRoot)) {
-        warn(
-          `Ignoring skill file "${relativePath}". Bundled skill resources should live under references/, scripts/, assets/, or a known asset root.`
-        );
+        // warn(
+        //   `Ignoring skill file "${relativePath}". Bundled skill resources should live under references/, scripts/, assets/, or a known asset root.`
+        // );
         continue;
       }
       const info = await stat(absolutePath);
@@ -308,14 +347,13 @@ function parseFrontmatter(raw: string): {
   };
 }
 
-function stringField(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function recordField(value: unknown) {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined;
+function formatSkillFrontmatterError(error: z.ZodError) {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "frontmatter";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
 }
 
 function resourceKind(path: string): "reference" | "script" | "asset" | "file" {
