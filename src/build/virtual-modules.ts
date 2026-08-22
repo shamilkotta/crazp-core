@@ -114,7 +114,9 @@ function renderToolsModule(tools: CrazpDiscoveredTool[]) {
   for (const tool of tools) {
     if (tool.path) {
       const varName = `tool_${fileToolIndex++}`;
-      imports.push(`import ${varName} from ${JSON.stringify(tool.path)};`);
+      imports.push(
+        `import ${varName} from ${JSON.stringify(toProjectImport(tool.path))};`
+      );
       entries.push(`  ${JSON.stringify(tool.name)}: ${varName}`);
       continue;
     }
@@ -158,7 +160,9 @@ function renderSubagentToolsModule(subagents: CrazpAgentManifest["subagents"]) {
     for (const tool of subagent.tools) {
       if (tool.path) {
         const varName = `tool_${fileToolIndex++}`;
-        imports.push(`import ${varName} from ${JSON.stringify(tool.path)};`);
+        imports.push(
+          `import ${varName} from ${JSON.stringify(toProjectImport(tool.path))};`
+        );
         toolEntries.push(`    ${JSON.stringify(tool.name)}: ${varName}`);
         continue;
       }
@@ -188,6 +192,11 @@ ${subagentEntries.join(",\n")}
 `;
 }
 
+function toProjectImport(path: string) {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  return `./${normalized}`;
+}
+
 function getConfigImportName(
   configPath: string,
   configImports: Map<string, string>,
@@ -198,7 +207,9 @@ function getConfigImportName(
 
   const importName = `config_${configImports.size}`;
   configImports.set(configPath, importName);
-  imports.push(`import ${importName} from ${JSON.stringify(configPath)};`);
+  imports.push(
+    `import ${importName} from ${JSON.stringify(toProjectImport(configPath))};`
+  );
   return importName;
 }
 

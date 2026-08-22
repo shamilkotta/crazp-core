@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, stat } from "node:fs/promises";
 import { builtinModules } from "node:module";
-import { isAbsolute, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   build as esbuild,
@@ -154,6 +154,8 @@ export function normalizePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
+const VIRTUAL_NAMESPACE = "crazp-virtual";
+
 function crazpAliasEsbuildPlugin(): EsbuildPlugin {
   const aliases = new Map([
     ["@crazp/core/worker", resolveWorkerRuntimePath()],
@@ -164,11 +166,14 @@ function crazpAliasEsbuildPlugin(): EsbuildPlugin {
   return {
     name: "crazp-alias",
     setup(build) {
-      build.onResolve({ filter: /.*/ }, async (args) => {
-        const target = aliases.get(args.path);
-        if (!target) return;
-        return { path: target };
-      });
+      build.onResolve(
+        { filter: /^(?:@crazp\/core\/worker|crazp:ctx|crazp)$/ },
+        (args) => {
+          const target = aliases.get(args.path);
+          if (!target) return;
+          return { path: target };
+        }
+      );
     }
   };
 }
@@ -177,10 +182,13 @@ function projectSourceFilesEsbuildPlugin(projectRoot: string): EsbuildPlugin {
   return {
     name: "crazp-project-source-files",
     setup(build) {
-      build.onResolve({ filter: /.*/ }, async (args) => {
-        const sourcePath = resolveEsbuildSourceFilePath(args, projectRoot);
-        if (!sourcePath) return;
+      build.onResolve({ filter: /^\.\.?\// }, async (args) => {
+        const resolved = join(args.resolveDir || projectRoot, args.path);
+        if (isOutsideDirectory(projectRoot, resolved)) return;
 
+        const sourcePath = normalizePath(
+          resolved.slice(projectRoot.length + 1)
+        ).replace(/\.[cm]?[jt]sx?$/, "");
         const sourceFilePath = await resolveExistingProjectSourceFilePath(
           sourcePath,
           projectRoot
@@ -202,30 +210,47 @@ export function crazpVirtualEsbuildPlugin(
   return {
     name: "crazp-virtual",
     setup(build: PluginBuild) {
-      build.onResolve({ filter: /.*/ }, async (args) => {
-        const sourcePath = resolveEsbuildSourceFilePath(args, projectRoot);
-        if (sourcePath) {
-          const virtualId = toVirtualId(`virtual:crazp/${sourcePath}`);
-          if (modules.has(virtualId)) {
-            return { path: virtualId, namespace: "crazp-virtual" };
-          }
-
-          const projectSourceFilePath =
-            await resolveExistingProjectSourceFilePath(sourcePath, projectRoot);
-          if (projectSourceFilePath) {
-            return { path: join(projectRoot, projectSourceFilePath) };
-          }
-        }
-
-        const directId = toVirtualId(args.path.replace(/\.js$/, ""));
-        if (modules.has(directId)) {
-          return { path: directId, namespace: "crazp-virtual" };
-        }
-        if (args.namespace === "crazp-virtual") {
-          return { path: join(projectRoot, args.path) };
-        }
+      // Claim only virtual:crazp/* — never intercept default package resolution.
+      build.onResolve({ filter: /^virtual:crazp\// }, (args) => {
+        const id = toVirtualId(args.path.replace(/\.js$/, ""));
+        if (!modules.has(id)) return;
+        return { path: id, namespace: VIRTUAL_NAMESPACE };
       });
-      build.onLoad({ filter: /.*/, namespace: "crazp-virtual" }, (args) => {
+
+      // Imports from virtual modules stay in this namespace until we hand off.
+      build.onResolve(
+        { filter: /.*/, namespace: VIRTUAL_NAMESPACE },
+        async (args) => {
+          if (args.path.startsWith("virtual:crazp/")) {
+            const id = toVirtualId(args.path.replace(/\.js$/, ""));
+            if (!modules.has(id)) return;
+            return { path: id, namespace: VIRTUAL_NAMESPACE };
+          }
+
+          if (args.path.startsWith("./") || args.path.startsWith("../")) {
+            const importerPath = stripVirtualPrefix(args.importer).replace(
+              /^virtual:crazp\//,
+              ""
+            );
+            const sourcePath = normalizePath(
+              join(dirname(importerPath), args.path)
+            ).replace(/\.ts$/, "");
+            const virtualId = toVirtualId(`virtual:crazp/${sourcePath}`);
+            if (modules.has(virtualId)) {
+              return { path: virtualId, namespace: VIRTUAL_NAMESPACE };
+            }
+          }
+
+          // Packages + real project files: esbuild's resolver, not ours.
+          return build.resolve(args.path, {
+            kind: args.kind,
+            resolveDir: projectRoot,
+            importer: join(projectRoot, "package.json")
+          });
+        }
+      );
+
+      build.onLoad({ filter: /.*/, namespace: VIRTUAL_NAMESPACE }, (args) => {
         const contents = modules.get(args.path);
         if (contents == null) return;
         return { contents, loader: "ts", resolveDir: projectRoot };
@@ -234,36 +259,12 @@ export function crazpVirtualEsbuildPlugin(
   };
 }
 
-function resolveEsbuildSourceFilePath(
-  args: Parameters<Parameters<PluginBuild["onResolve"]>[1]>[0],
-  projectRoot: string
-): string | undefined {
-  if (args.path.startsWith("/agents/")) {
-    return args.path.slice(1).replace(/\.ts$/, "");
-  }
-  if (args.namespace === "crazp-virtual") {
-    const importerPath = args.importer.replace(/^virtual:crazp\//, "");
-    return normalizePath(join(dirname(importerPath), args.path)).replace(
-      /\.ts$/,
-      ""
-    );
-  }
-  const resolved = isAbsolute(args.path)
-    ? args.path
-    : join(args.resolveDir || projectRoot, args.path);
-  if (isOutsideDirectory(projectRoot, resolved)) return;
-  return normalizePath(resolved.slice(projectRoot.length + 1)).replace(
-    /\.[cm]?[jt]sx?$/,
-    ""
-  );
-}
-
 async function resolveExistingProjectSourceFilePath(
   sourcePath: string,
   projectRoot: string
 ): Promise<string | undefined> {
   for (const candidate of sourcePathCandidates(sourcePath)) {
-    if (await exists(join(projectRoot, candidate))) {
+    if (await isFile(join(projectRoot, candidate))) {
       return candidate;
     }
   }
@@ -288,9 +289,9 @@ function isOutsideDirectory(rootDir: string, path: string) {
   return relativePath === ".." || relativePath.startsWith(`../`);
 }
 
-const exists = (path: string) =>
+const isFile = (path: string) =>
   stat(path)
-    .then(() => true)
+    .then((info) => info.isFile())
     .catch((error) => {
       if (isMissingFileError(error)) return false;
       throw error;
