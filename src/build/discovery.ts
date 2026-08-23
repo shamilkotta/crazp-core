@@ -51,7 +51,7 @@ export async function discoverAgentFromProject(
   return {
     rootDir,
     agentDir: agentDirName,
-    name: config?.name ?? basename(agentDirName),
+    name: config?.name ?? basename(rootDir),
     model: config?.model ?? DEFAULT_MODEL,
     maxSteps: config?.maxSteps ?? 250,
     chatRecovery: config?.chatRecovery ?? true,
