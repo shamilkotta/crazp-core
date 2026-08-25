@@ -10,6 +10,7 @@ import type {
   CrazpDiscoveredTool,
   CrazpResolvedSubagentConfig
 } from "../types";
+import { slugify } from "../lib";
 
 const TOOL_NAME_RE = /^[a-z][a-z0-9_]*$/;
 
@@ -52,6 +53,7 @@ export async function discoverAgentFromProject(
     rootDir,
     agentDir: agentDirName,
     name: config?.name ?? basename(rootDir),
+    slug: config?.slug ?? slugify(config?.name ?? basename(rootDir)),
     model: config?.model ?? DEFAULT_MODEL,
     maxSteps: config?.maxSteps ?? 250,
     chatRecovery: config?.chatRecovery ?? true,
@@ -170,7 +172,8 @@ async function loadProjectSubagents(
 
     if (!instructions && tools.length === 0) continue;
     subagents[key] = {
-      displayName: config?.displayName ?? titleCase(key),
+      name: config?.name ?? titleCase(key),
+      slug: config?.slug ?? slugify(config?.name ?? titleCase(key)),
       description: config?.description ?? `${titleCase(key)} subagent`,
       model: config?.model ?? DEFAULT_MODEL,
       maxSteps: config?.maxSteps ?? 250,
@@ -189,7 +192,8 @@ function normalizeInlineSubagents(
     Object.entries(subagents!).map(([key, config]) => [
       key,
       {
-        displayName: config.displayName ?? titleCase(key),
+        name: config.name ?? titleCase(key),
+        slug: config.slug ?? slugify(config.name ?? titleCase(key)),
         description: config.description ?? `${titleCase(key)} subagent`,
         model: config.model ?? DEFAULT_MODEL,
         maxSteps: config.maxSteps ?? 250,

@@ -44,13 +44,13 @@ export function createCrazpWorkerClass(
     override workspace = new Workspace({
       sql: this.ctx.storage.sql,
       r2: this.env.WORKSPACE_BUCKET,
-      name: () => this.name
+      name: () => `${manifest.slug}/${subagentKey}`
     });
 
     override getModel() {
       return typeof subagent.model === "string"
         ? subagent.model
-        : subagent.model({ env: this.env, agentName: this.name });
+        : subagent.model({ env: this.env, agentName: manifest.name });
     }
 
     override configureSession(session: Session) {
@@ -86,7 +86,7 @@ export function createCrazpWorkerClass(
       const frameworkTools = buildExecutionTools({
         executeAgent: this,
         ctx: this.ctx,
-        agentName: this.name,
+        agentId: manifest.slug,
         env: this.env,
         getWorkspace: () => this.workspace,
         setActivePlan: (plan) => setActivePlan(this.ctx.storage, plan),
@@ -123,13 +123,13 @@ export function createCrazpAgentClass(
     override workspace = new Workspace({
       sql: this.ctx.storage.sql,
       r2: this.env.WORKSPACE_BUCKET,
-      name: () => this.name
+      name: () => manifest.slug
     });
 
     override getModel() {
       return typeof manifest.model === "string"
         ? manifest.model
-        : manifest.model({ env: this.env, agentName: this.name });
+        : manifest.model({ env: this.env, agentName: manifest.name });
     }
 
     override configureSession(session: Session) {
@@ -180,7 +180,9 @@ export function createCrazpAgentClass(
       const bundle = manifest.skills;
       const bucket = this.env.WORKSPACE_BUCKET;
       const bundled = bundle.skills.length > 0 ? fromManifest(bundle) : null;
-      const remote = r2(bucket, { prefix: "skills/" });
+      const remote = r2(bucket, {
+        prefix: `${manifest.slug}/skills/`
+      });
       return bundled ? [bundled, remote] : [remote];
     }
 
@@ -188,7 +190,7 @@ export function createCrazpAgentClass(
       const frameworkTools = buildExecutionTools({
         executeAgent: this,
         ctx: this.ctx,
-        agentName: this.name,
+        agentId: manifest.slug,
         env: this.env,
         getWorkspace: () => this.workspace,
         setActivePlan: (plan) => setActivePlan(this.ctx.storage, plan),
@@ -207,7 +209,7 @@ export function createCrazpAgentClass(
         const subagent = manifest.subagents[key];
         if (!subagent) continue;
         tools[key] = agentTool(WorkerClass, {
-          displayName: subagent.displayName,
+          displayName: subagent.name,
           description: subagent.description,
           inputSchema: z.object({
             brief: z

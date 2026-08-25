@@ -17,7 +17,7 @@ import { createSandboxTools } from "./sandbox";
 export type BuildExecutionToolsOptions = {
   executeAgent: ExecuteToolAgent;
   ctx: DurableObjectState;
-  agentName: string;
+  agentId: string;
   env: {
     BROWSER: Fetcher;
     LOADER: WorkerLoader;
@@ -34,7 +34,7 @@ export function buildExecutionTools(options: BuildExecutionToolsOptions) {
   const {
     executeAgent,
     ctx,
-    agentName,
+    agentId,
     env,
     getWorkspace,
     setActivePlan,
@@ -79,7 +79,7 @@ export function buildExecutionTools(options: BuildExecutionToolsOptions) {
       tools,
       createSandboxTools({
         sandbox: env.SANDBOX,
-        sandboxId: agentName,
+        sandboxId: agentId,
         getWorkspace
       })
     );
