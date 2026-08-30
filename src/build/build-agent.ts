@@ -6,11 +6,7 @@ import { createWranglerConfig } from "./wrangler";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { runWithSpinner } from "../lib";
-
-const DEFAULT_DOCKERFILE = `FROM docker.io/cloudflare/sandbox:0.12.4
-
-EXPOSE 8080
-`;
+import { COMPUTER_DOCKERFILE } from "../defaults";
 
 export type BuildPhaseRunner = <T>(
   text: string,
@@ -27,7 +23,7 @@ export type BuildAgentOutput = {
   outDir: string;
   workerPath: string;
   wranglerPath: string;
-  dockerfilePath: string;
+  dockerfilePath: string | null;
   workerScript: string;
   wranglerConfig: Record<string, unknown>;
 };
@@ -61,21 +57,27 @@ export async function buildAgent(
   });
 
   const wranglerConfig = createWranglerConfig({
-    agentName: manifest.name
+    agentName: manifest.name,
+    enableContainer: manifest.execution.container
   });
   const workerPath = join(outDir, "index.js");
   const wranglerPath = join(outDir, "wrangler.json");
-  const dockerfilePath = join(outDir, "Dockerfile");
+  const dockerfilePath = manifest.execution.container
+    ? join(outDir, "Dockerfile")
+    : null;
 
   const workerScript = await runPhase("writing output files", async () => {
-    await Promise.all([
+    const writes = [
       writeFile(
         wranglerPath,
         `${JSON.stringify(wranglerConfig, null, 2)}\n`,
         "utf8"
-      ),
-      writeFile(dockerfilePath, DEFAULT_DOCKERFILE, "utf8")
-    ]);
+      )
+    ];
+    if (dockerfilePath) {
+      writes.push(writeFile(dockerfilePath, COMPUTER_DOCKERFILE, "utf8"));
+    }
+    await Promise.all(writes);
     return readFile(workerPath, "utf8");
   });
 

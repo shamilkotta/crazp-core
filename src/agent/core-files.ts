@@ -1,4 +1,4 @@
-import type { Workspace } from "@cloudflare/shell";
+import type { CrazpComputerWorkspace } from "./computer";
 
 export type CoreFileRecord = {
   path: string;
@@ -125,27 +125,16 @@ export const coreFileMeta = (path: string) =>
   AGENT_CORE_FILES.find((f) => f.path === path) ?? null;
 
 export async function resolveCoreFile(
-  workspace: Workspace,
+  workspace: CrazpComputerWorkspace,
   meta: CoreFileMeta
 ): Promise<CoreFileRecord> {
-  const existing = await workspace.readFile(meta.path);
+  const existing = await workspace.readFile!(meta.path);
   const content = existing ?? CORE_DEFAULTS[meta.path] ?? "";
-  const stat = await workspace.stat(meta.path).catch(() => null);
+  const stat = await workspace.stat!(meta.path).catch(() => null);
   return {
     ...meta,
     content,
     updatedAt: stat?.updatedAt ?? null,
     isDefault: existing == null
   };
-}
-
-export function assertSandboxSyncPrefixAllowed(path: string): string {
-  if (path.startsWith("identity/")) {
-    throw new Error("Cannot sync identity files into the sandbox.");
-  }
-  return path.replace(/^\/+/, "");
-}
-
-export function isSandboxSyncExcludedPath(path: string): boolean {
-  return path.startsWith("identity/") || path.startsWith(".crazp/");
 }

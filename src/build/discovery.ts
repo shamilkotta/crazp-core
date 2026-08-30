@@ -137,7 +137,7 @@ async function discoverProjectToolFiles(
   return tools;
 }
 
-// TODO: SKILLS?
+// TODO: SKILLS?, execution?
 async function loadProjectSubagents(
   projectRoot: string,
   dir: string

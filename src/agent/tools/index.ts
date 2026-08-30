@@ -1,29 +1,20 @@
 import { createBrowserTools } from "@cloudflare/think/tools/browser";
-import {
-  createExecuteTool,
-  type ExecuteToolAgent
-} from "@cloudflare/think/tools/execute";
 import { createExtensionTools } from "@cloudflare/think/tools/extensions";
 import type { ExtensionManager } from "@cloudflare/think/extensions";
-import type { Workspace } from "@cloudflare/shell";
 import type { ToolSet } from "ai";
 
-import { buildSharedToolSet } from "./workspace";
+import type { CrazpComputerWorkspace } from "../computer";
 import type { ActivePlan } from "./todo";
 import type { SerializedCrazpManifest } from "../types";
-import { createExecuteBundleTool } from "./execute-bundle";
-import { createSandboxTools } from "./sandbox";
+import { buildComputerToolSet } from "./workspace";
 
 export type BuildExecutionToolsOptions = {
-  executeAgent: ExecuteToolAgent;
   ctx: DurableObjectState;
-  agentId: string;
   env: {
     BROWSER: Fetcher;
     LOADER: WorkerLoader;
-    SANDBOX: DurableObjectNamespace<import("@cloudflare/sandbox").Sandbox>;
   };
-  getWorkspace: () => Workspace;
+  getWorkspace: () => CrazpComputerWorkspace;
   setActivePlan: (plan: ActivePlan | null) => Promise<void>;
   execution: SerializedCrazpManifest["execution"];
   extensions?: boolean;
@@ -32,9 +23,7 @@ export type BuildExecutionToolsOptions = {
 
 export function buildExecutionTools(options: BuildExecutionToolsOptions) {
   const {
-    executeAgent,
     ctx,
-    agentId,
     env,
     getWorkspace,
     setActivePlan,
@@ -48,19 +37,12 @@ export function buildExecutionTools(options: BuildExecutionToolsOptions) {
   if (execution.workspaceTools) {
     Object.assign(
       tools,
-      buildSharedToolSet({
+      buildComputerToolSet({
         getWorkspace,
-        setActivePlan
+        setActivePlan,
+        enableContainer: execution.container
       })
     );
-  }
-
-  if (execution.execute) {
-    tools.execute = createExecuteTool(executeAgent);
-  }
-
-  if (execution.executeBundle) {
-    tools.execute_bundle = createExecuteBundleTool(env.LOADER);
   }
 
   if (execution.browser) {
@@ -70,17 +52,6 @@ export function buildExecutionTools(options: BuildExecutionToolsOptions) {
         ctx,
         browser: env.BROWSER,
         loader: env.LOADER
-      })
-    );
-  }
-
-  if (execution.sandbox) {
-    Object.assign(
-      tools,
-      createSandboxTools({
-        sandbox: env.SANDBOX,
-        sandboxId: agentId,
-        getWorkspace
       })
     );
   }

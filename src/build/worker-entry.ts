@@ -1,9 +1,9 @@
 import { routeAgentRequest } from "agents";
+import { WorkspaceProxy, WorkspaceServiceProxy } from "@cloudflare/computer";
 import { handleFrameworkRequest } from "../worker";
 
 export * from "virtual:crazp/agent-classes";
-export { CodemodeRuntime } from "@cloudflare/codemode";
-export { Sandbox } from "@cloudflare/sandbox";
+export { WorkspaceProxy, WorkspaceServiceProxy };
 
 export default {
   async fetch(

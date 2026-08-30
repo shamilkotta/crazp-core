@@ -1,5 +1,4 @@
 import type { CrazpAgentManifest } from "../types";
-import type { Sandbox } from "@cloudflare/sandbox";
 
 export type SerializedCrazpManifest = Omit<
   CrazpAgentManifest,
@@ -19,6 +18,5 @@ export type CrazpWorkerEnv = {
   WORKSPACE_BUCKET: R2Bucket;
   BROWSER: Fetcher;
   LOADER: WorkerLoader;
-  SANDBOX: DurableObjectNamespace<Sandbox>;
   [key: string]: unknown;
 };

@@ -1,5 +1,4 @@
 import { Think } from "@cloudflare/think";
-import { Workspace } from "@cloudflare/shell";
 import { agentTool } from "agents/agent-tools";
 import type {
   Session,
@@ -12,6 +11,10 @@ import { fromManifest, r2 } from "agents/skills";
 import agentUserTools from "virtual:crazp/tools/agent";
 import subagentUserTools from "virtual:crazp/tools/subagents";
 
+import {
+  createComputerThinkClass,
+  type CrazpComputerWorkspace
+} from "./computer";
 import { buildExecutionTools } from "./tools";
 import { bindUserTools, mergeUserTools } from "./tools/user-tools";
 import { buildTurnSections } from "./preamble";
@@ -38,14 +41,9 @@ export function createCrazpWorkerClass(
     throw new Error(`Unknown subagent: ${subagentKey}`);
   }
 
-  class GeneratedWorker extends Think<CrazpWorkerEnv> {
+  class GeneratedWorkerBase extends Think<CrazpWorkerEnv> {
     override extensionLoader = this.env.LOADER;
     override maxSteps = subagent.maxSteps;
-    override workspace = new Workspace({
-      sql: this.ctx.storage.sql,
-      r2: this.env.WORKSPACE_BUCKET,
-      name: () => `${manifest.slug}/${subagentKey}`
-    });
 
     override getModel() {
       return typeof subagent.model === "string"
@@ -84,11 +82,9 @@ export function createCrazpWorkerClass(
 
     override getTools(): ToolSet {
       const frameworkTools = buildExecutionTools({
-        executeAgent: this,
         ctx: this.ctx,
-        agentId: manifest.slug,
         env: this.env,
-        getWorkspace: () => this.workspace,
+        getWorkspace: () => this.workspace as CrazpComputerWorkspace,
         setActivePlan: (plan) => setActivePlan(this.ctx.storage, plan),
         execution: manifest.execution,
         extensions: manifest.extensions,
@@ -105,7 +101,15 @@ export function createCrazpWorkerClass(
     }
   }
 
-  Object.defineProperty(GeneratedWorker, "name", { value: className });
+  const GeneratedWorker = createComputerThinkClass(
+    GeneratedWorkerBase as never,
+    className,
+    manifest.execution.container
+  ) as unknown as new (
+    ctx: DurableObjectState,
+    env: CrazpWorkerEnv
+  ) => Think<CrazpWorkerEnv>;
+
   return GeneratedWorker;
 }
 
@@ -116,15 +120,10 @@ export function createCrazpAgentClass(
 ): new (ctx: DurableObjectState, env: CrazpWorkerEnv) => Think<CrazpWorkerEnv> {
   const BOOTSTRAP_SEEDED_KEY = "crazp:bootstrap-seeded" as const;
 
-  class GeneratedAgent extends Think<CrazpWorkerEnv> {
+  class GeneratedAgentBase extends Think<CrazpWorkerEnv> {
     override extensionLoader = this.env.LOADER;
     override maxSteps = manifest.maxSteps;
     override chatRecovery = manifest.chatRecovery;
-    override workspace = new Workspace({
-      sql: this.ctx.storage.sql,
-      r2: this.env.WORKSPACE_BUCKET,
-      name: () => manifest.slug
-    });
 
     override getModel() {
       return typeof manifest.model === "string"
@@ -188,11 +187,9 @@ export function createCrazpAgentClass(
 
     override getTools(): ToolSet {
       const frameworkTools = buildExecutionTools({
-        executeAgent: this,
         ctx: this.ctx,
-        agentId: manifest.slug,
         env: this.env,
-        getWorkspace: () => this.workspace,
+        getWorkspace: () => this.workspace as CrazpComputerWorkspace,
         setActivePlan: (plan) => setActivePlan(this.ctx.storage, plan),
         execution: manifest.execution,
         extensions: manifest.extensions,
@@ -262,7 +259,10 @@ export function createCrazpAgentClass(
       }
       return {
         get: async () => {
-          const file = await resolveCoreFile(this.workspace, meta);
+          const file = await resolveCoreFile(
+            this.workspace as CrazpComputerWorkspace,
+            meta
+          );
           return file.content.trim();
         },
         set: async (content) => {
@@ -272,6 +272,15 @@ export function createCrazpAgentClass(
       };
     }
   }
+
+  const GeneratedAgent = createComputerThinkClass(
+    GeneratedAgentBase as never,
+    className,
+    manifest.execution.container
+  ) as unknown as new (
+    ctx: DurableObjectState,
+    env: CrazpWorkerEnv
+  ) => Think<CrazpWorkerEnv>;
 
   Object.defineProperty(GeneratedAgent, "name", { value: className });
   return GeneratedAgent;
