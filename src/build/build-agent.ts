@@ -60,8 +60,12 @@ export async function buildAgent(
     });
   });
 
+  const envVars = await loadAgentEnvVars(
+    join(projectRoot, manifest.agentDir, "env.json")
+  );
   const wranglerConfig = createWranglerConfig({
-    agentName: manifest.name
+    agentName: manifest.name,
+    vars: envVars
   });
   const workerPath = join(outDir, "index.js");
   const wranglerPath = join(outDir, "wrangler.json");
@@ -92,4 +96,36 @@ export async function buildAgent(
     workerScript,
     wranglerConfig
   };
+}
+
+async function loadAgentEnvVars(
+  path: string
+): Promise<Record<string, string> | undefined> {
+  try {
+    const raw = await readFile(path, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed == null || Array.isArray(parsed)) {
+      throw new Error(`Invalid env.json at ${path}: expected a JSON object`);
+    }
+    const vars: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value !== "string") {
+        throw new Error(
+          `Invalid env.json at ${path}: value for "${key}" must be a string`
+        );
+      }
+      vars[key] = value;
+    }
+    return vars;
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error != null &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
 }

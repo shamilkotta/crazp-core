@@ -1,3 +1,5 @@
+import type { ThinkChannels } from "@cloudflare/think";
+import type { ThinkMessengers } from "@cloudflare/think/messengers";
 import { Think } from "@cloudflare/think";
 import { Workspace } from "@cloudflare/shell";
 import { agentTool } from "agents/agent-tools";
@@ -11,12 +13,19 @@ import { z } from "zod";
 import { fromManifest, r2 } from "agents/skills";
 import agentUserTools from "virtual:crazp/tools/agent";
 import subagentUserTools from "virtual:crazp/tools/subagents";
+import channelModules from "virtual:crazp/channels";
 
 import { buildExecutionTools } from "./tools";
-import { bindUserTools, mergeUserTools } from "./tools/user-tools";
+import { mergeUserTools } from "./tools/user-tools";
 import { buildTurnSections } from "./preamble";
 import type { ActivePlan } from "./tools/todo";
 import type { CrazpWorkerEnv, SerializedCrazpManifest } from "./types";
+import {
+  isChannelDefinition,
+  isCrazpCustomChannelDefinition,
+  toMessengerDefinition
+} from "./channels";
+import { handleCustomChannelRequest } from "./custom-channels";
 import {
   BOOTSTRAP_PATH,
   BOOTSTRAP_SEED,
@@ -95,13 +104,7 @@ export function createCrazpWorkerClass(
         extensionManager: this.extensionManager
       });
       const scopedTools = subagentUserTools[subagentKey] ?? {};
-      const userTools = bindUserTools(scopedTools, () => ({
-        env: this.env,
-        ctx: this.ctx,
-        workspace: this.workspace,
-        agentName: this.name
-      }));
-      return mergeUserTools(frameworkTools, userTools);
+      return mergeUserTools(frameworkTools, scopedTools);
     }
   }
 
@@ -186,6 +189,44 @@ export function createCrazpAgentClass(
       return bundled ? [bundled, remote] : [remote];
     }
 
+    override getMessengers(): ThinkMessengers {
+      const messengers: ThinkMessengers = {};
+      for (const [id, module] of Object.entries(channelModules)) {
+        if (isCrazpCustomChannelDefinition(module)) continue;
+        const messenger = toMessengerDefinition(module);
+        if (messenger) messengers[id] = messenger;
+      }
+      return messengers;
+    }
+
+    override configureChannels(): ThinkChannels {
+      const channels: ThinkChannels = {};
+      for (const [id, module] of Object.entries(channelModules)) {
+        if (isCrazpCustomChannelDefinition(module)) continue;
+        if (
+          isChannelDefinition(module) &&
+          module.kind !== "messenger" &&
+          !toMessengerDefinition(module)
+        ) {
+          channels[id] = module;
+        }
+      }
+      return channels;
+    }
+
+    override async fetch(request: Request): Promise<Response> {
+      const custom = await handleCustomChannelRequest(
+        this,
+        request,
+        channelModules,
+        (promise) => {
+          this.ctx.waitUntil(promise);
+        }
+      );
+      if (custom) return custom;
+      return super.fetch(request);
+    }
+
     override getTools(): ToolSet {
       const frameworkTools = buildExecutionTools({
         executeAgent: this,
@@ -198,13 +239,7 @@ export function createCrazpAgentClass(
         extensions: manifest.extensions,
         extensionManager: this.extensionManager
       });
-      const userTools = bindUserTools(agentUserTools, () => ({
-        env: this.env,
-        ctx: this.ctx,
-        workspace: this.workspace,
-        agentName: this.name
-      }));
-      const tools = mergeUserTools(frameworkTools, userTools);
+      const tools = mergeUserTools(frameworkTools, agentUserTools);
       for (const [key, WorkerClass] of Object.entries(workerClasses)) {
         const subagent = manifest.subagents[key];
         if (!subagent) continue;

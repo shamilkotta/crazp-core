@@ -1,4 +1,8 @@
-import type { CrazpAgentManifest, CrazpDiscoveredTool } from "../types";
+import type {
+  CrazpAgentManifest,
+  CrazpDiscoveredChannel,
+  CrazpDiscoveredTool
+} from "../types";
 import type { SerializedCrazpManifest } from "../agent/types";
 import {
   toPascalCase,
@@ -67,6 +71,10 @@ export function buildVirtualModules(
     toVirtualId("virtual:crazp/tools/subagents"),
     renderSubagentToolsModule(manifest.subagents)
   );
+  modules.set(
+    toVirtualId("virtual:crazp/channels"),
+    renderChannelsModule(manifest.channels)
+  );
 
   for (const [sourcePath, source] of Object.entries(agentFiles)) {
     const virtualAgentId = `virtual:crazp/${sourcePath.replace(/\.ts$/, "")}`;
@@ -85,10 +93,15 @@ export function buildVirtualModules(
 function serializeManifest(
   manifest: CrazpAgentManifest
 ): SerializedCrazpManifest {
-  const { tools, subagents, ...rest } = manifest;
+  const { tools, subagents, channels, ...rest } = manifest;
   return {
     ...rest,
     toolNames: tools.map((tool) => tool.name),
+    channelNames: (() => {
+      const names = channels.map((channel) => channel.name);
+      if (!names.includes("crazp")) names.push("crazp");
+      return names;
+    })(),
     subagents: Object.fromEntries(
       Object.entries(subagents).map(([key, value]) => {
         const { tools: subTools, ...subagent } = value;
@@ -131,6 +144,37 @@ function renderToolsModule(tools: CrazpDiscoveredTool[]) {
     entries.push(
       `  ${JSON.stringify(tool.name)}: ${renderConfigAccess(importName, tool)}`
     );
+  }
+
+  return `${imports.join("\n")}
+
+export default {
+${entries.join(",\n")}
+};
+`;
+}
+
+function renderChannelsModule(channels: CrazpDiscoveredChannel[]) {
+  const imports: string[] = [];
+  const entries: string[] = [];
+  const hasCrazp = channels.some((channel) => channel.name === "crazp");
+
+  // Supply default HTTP channel when agent/channels/crazp.ts is absent.
+  if (!hasCrazp) {
+    imports.push(`import { crazpChannel } from "crazp/channels";`);
+    entries.push(`  "crazp": crazpChannel()`);
+  }
+
+  for (const [index, channel] of channels.entries()) {
+    const varName = `channel_${index}`;
+    imports.push(
+      `import ${varName} from ${JSON.stringify(toProjectImport(channel.path))};`
+    );
+    entries.push(`  ${JSON.stringify(channel.name)}: ${varName}`);
+  }
+
+  if (entries.length === 0) {
+    return "export default {};";
   }
 
   return `${imports.join("\n")}

@@ -27,6 +27,7 @@ const DEFAULT_BINDINGS: WranglerConfig = {
 export function createWranglerConfig(args: {
   agentName: string;
   outfile?: string;
+  vars?: Record<string, string>;
 }): WranglerConfig {
   const workerName = args.agentName;
   const mainClassName = toThinkClassName(args.agentName);
@@ -66,6 +67,9 @@ export function createWranglerConfig(args: {
         tag: "v1",
         new_sqlite_classes: [mainClassName, "Sandbox"]
       }
-    ]
+    ],
+    ...(args.vars && Object.keys(args.vars).length > 0
+      ? { vars: args.vars }
+      : {})
   };
 }

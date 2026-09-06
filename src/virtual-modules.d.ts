@@ -16,6 +16,13 @@ declare module "virtual:crazp/tools/subagents" {
   export default tools;
 }
 
+declare module "virtual:crazp/channels" {
+  import type { CrazpChannelModule } from "crazp/channels";
+
+  const channels: Record<string, CrazpChannelModule>;
+  export default channels;
+}
+
 declare module "@crazp/core/worker" {
   import type { ToolSet } from "ai";
   import type { CrazpAgentManifest } from "../types";
@@ -28,7 +35,7 @@ declare module "@crazp/core/worker" {
   ): unknown;
 
   export function createCrazpWorkerClass(
-    manifest: CrazpAgentManifest,
+    manifest: SerializedCrazpManifest,
     subagentKey: string,
     className: string
   ): unknown;

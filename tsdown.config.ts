@@ -16,16 +16,6 @@ export default defineConfig({
   fixedExtension: false,
   platform: "node",
   deps: {
-    neverBundle: [
-      "esbuild",
-      "@cloudflare/think",
-      "@cloudflare/codemode",
-      "agents",
-      "ai",
-      "crazp",
-      "virtual:crazp/agent-classes",
-      "virtual:crazp/tools/agent",
-      "virtual:crazp/tools/subagents"
-    ]
+    neverBundle: [/^virtual:crazp\//, "cloudflare:workers"]
   }
 });

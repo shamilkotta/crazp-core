@@ -11,6 +11,11 @@ export type CrazpDiscoveredTool = {
   configAccess?: string;
 };
 
+export type CrazpDiscoveredChannel = {
+  name: string;
+  path: string;
+};
+
 export type CrazpResolvedSubagentConfig = Required<
   Omit<CrazpSubagentConfig, "instructions" | "tools">
 > & {
@@ -33,6 +38,7 @@ export type CrazpAgentManifest = Omit<
   agentDir: string;
   skills: SkillManifest;
   subagents: Record<string, CrazpResolvedSubagentConfig>;
+  channels: CrazpDiscoveredChannel[];
 };
 
 export type CrazpRouteConfig<Env = unknown> = {

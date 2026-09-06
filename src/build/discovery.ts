@@ -7,12 +7,14 @@ import { buildSkillsBundle, mergeSkillsBundles } from "./skills";
 import type { CrazpAgentConfig, CrazpSubagentConfig } from "crazp";
 import type {
   CrazpAgentManifest,
+  CrazpDiscoveredChannel,
   CrazpDiscoveredTool,
   CrazpResolvedSubagentConfig
 } from "../types";
 import { slugify } from "../lib";
 
 const TOOL_NAME_RE = /^[a-z][a-z0-9_]*$/;
+const CHANNEL_NAME_RE = /^[a-z][a-z0-9_-]*$/;
 
 export type DiscoverAgentFromProjectOptions = {
   projectRoot: string;
@@ -44,6 +46,10 @@ export async function discoverAgentFromProject(
     await buildSkillsBundle(join(agentRoot, "skills")),
     config?.skills ?? []
   );
+  const channels = await discoverProjectChannelFiles(
+    rootDir,
+    `${agentPrefix}/channels`
+  );
   const subagents = await loadProjectSubagents(
     rootDir,
     `${agentPrefix}/subagents`
@@ -64,6 +70,7 @@ export async function discoverAgentFromProject(
       ...subagents
     },
     skills,
+    channels,
     extensions: config?.extensions ?? true,
     execution: { ...DEFAULT_EXECUTION, ...config?.execution }
   };
@@ -135,6 +142,36 @@ async function discoverProjectToolFiles(
   }
 
   return tools;
+}
+
+async function discoverProjectChannelFiles(projectRoot: string, dir: string) {
+  const normalizedDir = normalizePath(dir);
+  const entries = await readdir(join(projectRoot, normalizedDir), {
+    withFileTypes: true
+  }).catch((error) => {
+    if (isMissingPathError(error)) return [];
+    throw error;
+  });
+  const channels: CrazpDiscoveredChannel[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of entries) {
+    if (!entry.isFile() || extname(entry.name) !== ".ts") continue;
+
+    const name = basename(entry.name, ".ts");
+    if (!CHANNEL_NAME_RE.test(name)) {
+      throw new Error(
+        `Invalid channel filename "${entry.name}". Use lower_snake_case or kebab-case TypeScript files.`
+      );
+    }
+    if (seen.has(name)) {
+      throw new Error(`Duplicate channel name discovered: ${name}`);
+    }
+    seen.add(name);
+    channels.push({ name, path: `${normalizedDir}/${entry.name}` });
+  }
+
+  return channels;
 }
 
 // TODO: SKILLS?

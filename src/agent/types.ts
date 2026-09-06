@@ -3,9 +3,10 @@ import type { Sandbox } from "@cloudflare/sandbox";
 
 export type SerializedCrazpManifest = Omit<
   CrazpAgentManifest,
-  "tools" | "subagents"
+  "tools" | "subagents" | "channels"
 > & {
   toolNames: string[];
+  channelNames: string[];
   subagents: Record<
     string,
     Omit<CrazpAgentManifest["subagents"][string], "tools"> & {
